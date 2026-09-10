@@ -94,10 +94,23 @@ function Install-NodeViaFnm {
 
         Write-UiPrimary "🔄 初始化 fnm 环境变量..." -Level Detail
         try {
-            $fnmEnvOutput = & fnm env --use-on-cd 2>&1 | Out-String
-            if ($fnmEnvOutput) {
-                Invoke-Expression $fnmEnvOutput
+            $fnmEnvOutput = & fnm env --json --use-on-cd 2>&1 | Out-String
+            if ($fnmEnvOutput -and $LASTEXITCODE -eq 0) {
+                $envVars = $fnmEnvOutput | ConvertFrom-Json
+                foreach ($prop in $envVars.psobject.properties) {
+                    Set-Item -Path "Env:$($prop.Name)" -Value $prop.Value
+                }
                 Write-UiSuccess "✓ fnm 环境变量已注入当前会话" -Level Detail
+            } elseif ($fnmEnvOutput) {
+                $lines = $fnmEnvOutput -split "`r?`n"
+                foreach ($line in $lines) {
+                    if ($line -match '^\$env:([a-zA-Z0-9_]+)="([^"]*)"$') {
+                        Set-Item -Path "Env:$($matches[1])" -Value $matches[2]
+                    } elseif ($line -match '^\$env:PATH="([^"]*)" \+ \[IO\.Path\]::PathSeparator \+ \$env:PATH$') {
+                        $env:PATH = $matches[1] + [IO.Path]::PathSeparator + $env:PATH
+                    }
+                }
+                Write-UiSuccess "✓ fnm 环境变量已注入当前会话 (Fallback)" -Level Detail
             }
         } catch {
             Write-UiWarning "⚠ fnm env 执行异常: $($_.Exception.Message)" -Level Debug
@@ -112,8 +125,22 @@ function Install-NodeViaFnm {
 
         if (-not $env:FNM_MULTISHELL_PATH) {
             try {
-                $fnmEnvRetry = & fnm env --use-on-cd 2>&1 | Out-String
-                if ($fnmEnvRetry) { Invoke-Expression $fnmEnvRetry }
+                $fnmEnvRetry = & fnm env --json --use-on-cd 2>&1 | Out-String
+                if ($fnmEnvRetry -and $LASTEXITCODE -eq 0) {
+                    $envVars = $fnmEnvRetry | ConvertFrom-Json
+                    foreach ($prop in $envVars.psobject.properties) {
+                        Set-Item -Path "Env:$($prop.Name)" -Value $prop.Value
+                    }
+                } elseif ($fnmEnvRetry) {
+                    $lines = $fnmEnvRetry -split "`r?`n"
+                    foreach ($line in $lines) {
+                        if ($line -match '^\$env:([a-zA-Z0-9_]+)="([^"]*)"$') {
+                            Set-Item -Path "Env:$($matches[1])" -Value $matches[2]
+                        } elseif ($line -match '^\$env:PATH="([^"]*)" \+ \[IO\.Path\]::PathSeparator \+ \$env:PATH$') {
+                            $env:PATH = $matches[1] + [IO.Path]::PathSeparator + $env:PATH
+                        }
+                    }
+                }
             } catch {
                 Write-UiWarning "⚠ fnm env 重试失败: $($_.Exception.Message)" -Level Debug
             }

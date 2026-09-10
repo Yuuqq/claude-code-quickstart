@@ -1104,7 +1104,11 @@ function Complete-NodeRuntimeInstall {
             $nodeProfileConfig = @(
                 "# Node.js 环境初始化（fnm）",
                 "if (Get-Command fnm -ErrorAction SilentlyContinue) {",
-                "    fnm env --use-on-cd | Out-String | Invoke-Expression",
+                "    `$fnmEnv = & fnm env --json --use-on-cd 2>&1 | Out-String",
+                "    if (`$fnmEnv -and `$LASTEXITCODE -eq 0) {",
+                "        `$envVars = `$fnmEnv | ConvertFrom-Json",
+                "        foreach (`$prop in `$envVars.psobject.properties) { Set-Item -Path `"Env:`$(`$prop.Name)`" -Value `$prop.Value }",
+                "    }",
                 "}"
             )
             $profileSuccess = Write-ProfileSubsection -FilePath $profilePath -SectionName "FNM" -SectionContent $nodeProfileConfig

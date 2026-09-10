@@ -71,14 +71,14 @@ CCQ 通过双阶段脚本 + 实时检测机制，把这些问题统一收敛到�
 
 ```powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force
-[Text.Encoding]::UTF8.GetString((New-Object Net.WebClient).DownloadData('https://github.com/MrNine-666/claude-code-quickstart/releases/latest/download/Bootstrap-ClaudeEnv.built.ps1')) | iex
+[Text.Encoding]::UTF8.GetString((New-Object Net.WebClient).DownloadData('https://github.com/Yuuqq/claude-code-quickstart/releases/latest/download/Bootstrap-ClaudeEnv.built.ps1')) | iex
 ```
 
 #### 2) 安装脚本（PS 7+）
 
 ```powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force
-irm 'https://github.com/MrNine-666/claude-code-quickstart/releases/latest/download/Install-ClaudeEnv.built.ps1' | iex
+irm 'https://github.com/Yuuqq/claude-code-quickstart/releases/latest/download/Install-ClaudeEnv.built.ps1' | iex
 ```
 
 #### 3) 管理脚本（PS 7+）
@@ -92,7 +92,7 @@ ccq
 旧入口：
 
 ```powershell
-irm 'https://github.com/MrNine-666/claude-code-quickstart/releases/latest/download/Manage-ClaudeEnv.built.ps1' | iex
+irm 'https://github.com/Yuuqq/claude-code-quickstart/releases/latest/download/Manage-ClaudeEnv.built.ps1' | iex
 ```
 
 ---
@@ -124,7 +124,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 ### 方式三：从源码运行（开发者）
 
 ```powershell
-git clone https://github.com/MrNine-666/claude-code-quickstart.git
+git clone https://github.com/Yuuqq/claude-code-quickstart.git
 cd claude-code-quickstart
 
 # 引导（PS 5.1+）

@@ -212,11 +212,12 @@ function Read-SettingsJson {
     if (-not (Test-Path $path)) { return @{} }
     try {
         $content = Get-Content $path -Raw -Encoding UTF8
+        if ([string]::IsNullOrWhiteSpace($content)) { return @{} }
         $settings = $content | ConvertFrom-Json -AsHashtable -ErrorAction Stop
         if (-not $settings) { return @{} }
         return $settings
     } catch {
-        return @{}
+        throw "Failed to parse settings.json ($path): $_"
     }
 }
 
@@ -231,10 +232,20 @@ function Write-SettingsJsonAtomic {
     $dir = Split-Path $path -Parent
     if (-not (Test-Path $dir)) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        try {
+            $acl = Get-Acl -Path $dir
+            $acl.SetAccessRuleProtection($true, $false)
+            $rule = New-Object System.Security.AccessControl.FileSystemAccessRule([System.Security.Principal.WindowsIdentity]::GetCurrent().Name, "FullControl", "Allow")
+            $acl.AddAccessRule($rule)
+            Set-Acl -Path $dir -AclObject $acl
+        } catch {
+            Write-Warning "Failed to set ACL on $dir : $_"
+        }
     }
-    $tempPath = "$path.tmp"
-    $Settings | ConvertTo-Json -Depth 10 | Set-Content $tempPath -Encoding UTF8
-    Move-Item $tempPath $path -Force
+    $contentArray = @($Settings | ConvertTo-Json -Depth 10)
+
+    # 依赖 Profile.ps1 里的 Write-FileAtomically（已包含重试逻辑）
+    $null = Write-FileAtomically -FilePath $path -Content $contentArray
 }
 
 function Get-MaskedApiKey {
