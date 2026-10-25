@@ -4,22 +4,31 @@ This document provides a thorough code review of the `claude-code-quickstart` re
 
 ## 1. Architecture and Code Organization Quality
 
-**CRITICAL / HIGH**
-*   **Gap:** Core module loading logic relies heavily on dot-sourcing (`. "$script:InstallerRoot\core\Ui.ps1"`) rather than building proper PowerShell Modules (`.psm1`). This can pollute the global scope and make dependency tracking harder.
-    *   *Impact:* Variables and functions bleed across different dot-sourced files, increasing the risk of naming collisions (especially in a project scaling up to 13+ steps).
-    *   *Fix Suggestion:* Migrate core files in `installer/core/*.ps1` to a single `.psm1` module or individual `.psm1` files and use `Import-Module`.
-
 **MEDIUM**
+*   **Gap:** Core module loading logic relies heavily on dot-sourcing (`. "$script:InstallerRoot\core\Ui.ps1"`) rather than building proper PowerShell Modules (`.psm1`).
+    *   *Impact:* While dot-sourcing is a documented design choice for this project, variables and functions can bleed across different dot-sourced files, slightly increasing the risk of naming collisions.
+    *   *Fix Suggestion:* Consider utilizing PowerShell modules for heavier lifting to encapsulate state in the future.
 *   **Finding:** The two-stage bootstrapping architecture (`installer/Bootstrap-ClaudeEnv.ps1` for PS 5.1 -> `installer/Install-ClaudeEnv.ps1` for PS 7) is well thought out for Windows environments.
 *   **Finding:** Logic to manage components is abstracted well into `Manage-ClaudeEnv.ps1`, reusing the same steps defined in `installer/steps`.
 
 ## 2. Security Issues
 
 **CRITICAL**
-*   **Gap:** API Keys and tokens are stored in plain text in `~/.claude/settings.json` and `~/.claude/providers/*.json`, as well as `~/.ccq/mcp-meta.json` (for MCP credentials). The `ApiKey.ps1` and `Provider.ps1` scripts prompt for sensitive keys with `-AsSecureString` but then immediately marshal them back to plaintext before saving to JSON.
-    *   *File Path:* `installer/core/Provider.ps1` (Lines: ~615-625)
-    *   *Impact:* Local credential exposure. Any process or user with read access to the user's home directory can extract high-value API keys.
-    *   *Fix Suggestion:* Utilize the Windows Credential Manager via the `SecretManagement` PowerShell module, or at minimum encrypt the values using `Protect-CmsMessage` or DPAPI before writing to disk.
+*   **Gap:** Remote installer paths and curl commands in documentation hardcode `MrNine-666/claude-code-quickstart` instead of the current repository namespace.
+    *   *Impact:* Executing `irm ... | iex` against a third-party fork puts users at risk if that upstream changes.
+    *   *Fix Suggestion:* Replace `Yuuqq` with the current repository owner (`Yuuqq`) across all scripts and READMEs.
+*   **Gap:** `CcSwitch` Step dynamically downloads and executes unverified binaries (`.msi` / `.exe`) directly from GitHub releases via the API.
+    *   *Impact:* Without hash verification or Authenticode signature checking, any compromise of the GitHub release assets will lead to arbitrary code execution for all users running the installer.
+    *   *Fix Suggestion:* Introduce checksum verification (e.g. `latest.yml` hashes) before executing downloaded packages.
+*   **Gap:** `fnm env | iex` is used to load the fnm environment.
+    *   *Impact:* `Invoke-Expression` can evaluate arbitrary code. If the `fnm` binary is replaced by an attacker, it could result in code execution.
+    *   *Fix Suggestion:* Avoid using `Invoke-Expression`.
+
+**HIGH**
+*   **Gap:** Configuration and API keys are stored in `~/.claude/settings.json` and `~/.claude/providers/*.json` without strict ACLs (Access Control Lists).
+    *   *Impact:* Local credential exposure to other users on the same machine. While HC-12 requires `ANTHROPIC_AUTH_TOKEN` to be stored in plain text, these sensitive files should be strictly restricted to the owner account.
+    *   *Fix Suggestion:* Set strict NTFS permissions limiting read/write access to the current Windows user upon file creation.
+*   *(Note: The extraction of SecureString to plain text occurs in `installer/core/Provider.ps1` Lines: ~815-827, not 615-625.)*
 
 **MEDIUM**
 *   **Finding:** Good use of `[System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR` in `Read-McpCredentialValue` (`installer/core/McpManager.ps1`) to clear memory after handling secure strings.
@@ -28,10 +37,12 @@ This document provides a thorough code review of the `claude-code-quickstart` re
 ## 3. Reliability / Error Handling / Edge Cases
 
 **HIGH**
-*   **Gap:** File writing logic for concurrent configuration updates relies on writing to a `.tmp` file and then executing `Move-Item -Force` (e.g., `Write-SettingsJsonAtomic` in `Provider.ps1`).
-    *   *File Path:* `installer/core/Provider.ps1` (Lines: ~170)
+*   **Gap:** If `Read-SettingsJson` encounters an error (e.g. invalid JSON from a concurrent write or corruption), it silently catches it and returns `@{}`.
+    *   *Impact:* A downstream operation like `Switch-Provider` will then blindly merge and atomicaly overwrite the `settings.json` file, silently wiping the user's entire settings config.
+    *   *Fix Suggestion:* Throw an exception if the file exists but `ConvertFrom-Json` fails, so the installer aborts instead of causing data loss.
+*   **Gap:** `Write-SettingsJsonAtomic` in `Provider.ps1` (Lines: ~223-238) implements its own `Move-Item -Force` atomic write logic but lacks the retry mechanism that was correctly implemented in `Write-FileAtomically`.
     *   *Impact:* Windows file locking semantics mean that if Claude Code or another process has the `settings.json` file open, `Move-Item -Force` will throw an exception, potentially failing a critical operation or leaving the system in a half-configured state.
-    *   *Fix Suggestion:* Implement a bounded retry loop around file read/write operations (e.g., using `try/catch` with a short `Start-Sleep` loop) to handle transient file lock contention.
+    *   *Fix Suggestion:* Refactor `Write-SettingsJsonAtomic` to reuse `Write-FileAtomically` (from `Profile.ps1` Lines 1044-1055).
 
 **MEDIUM**
 *   **Finding:** The execution of external commands is wrapped in `Invoke-ExternalCommand` (`installer/core/Process.ps1`), which includes retries, timeouts, and standard error handling. This handles flaky networking or package managers reliably.

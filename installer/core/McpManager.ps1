@@ -1040,9 +1040,22 @@ function Install-McpRuntimeDeps {
     if ((Test-CommandAvailable -Command "fnm") -and -not (Test-CommandAvailable -Command "node")) {
         Write-UiPrimary "初始化 fnm 环境..."
         try {
-            $fnmEnvOutput = & fnm env --use-on-cd 2>&1 | Out-String
-            if ($fnmEnvOutput) {
-                Invoke-Expression $fnmEnvOutput
+            $fnmEnvOutput = & fnm env --json --use-on-cd 2>&1 | Out-String
+            if ($fnmEnvOutput -and $LASTEXITCODE -eq 0) {
+                $envVars = $fnmEnvOutput | ConvertFrom-Json
+                foreach ($prop in $envVars.psobject.properties) {
+                    Set-Item -Path "Env:$($prop.Name)" -Value $prop.Value
+                }
+            } elseif ($fnmEnvOutput) {
+                # Fallback to regex parsing if --json isn't supported (older fnm)
+                $lines = $fnmEnvOutput -split "`r?`n"
+                foreach ($line in $lines) {
+                    if ($line -match '^\$env:([a-zA-Z0-9_]+)="([^"]*)"$') {
+                        Set-Item -Path "Env:$($matches[1])" -Value $matches[2]
+                    } elseif ($line -match '^\$env:PATH="([^"]*)" \+ \[IO\.Path\]::PathSeparator \+ \$env:PATH$') {
+                        $env:PATH = $matches[1] + [IO.Path]::PathSeparator + $env:PATH
+                    }
+                }
             }
             Refresh-SessionPath
         } catch {

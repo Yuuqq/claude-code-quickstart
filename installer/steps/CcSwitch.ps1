@@ -179,7 +179,7 @@ function Install-CcSwitch {
         # 5. 下载 CC-Switch 安装包
         Write-UiDim "5. 下载 CC-Switch 安装包..." -Level Detail
 
-        $installerPath = Download-CcSwitchInstaller -DownloadUrl $releaseInfo.DownloadUrl -Version $releaseInfo.Version
+        $installerPath = Download-CcSwitchInstaller -DownloadUrl $releaseInfo.DownloadUrl -Version $releaseInfo.Version -ExpectedHash $releaseInfo.ExpectedHash
 
         if (-not $installerPath -or -not (Test-Path $installerPath)) {
             throw "CC-Switch 安装包下载失败"
@@ -312,6 +312,21 @@ function Get-LatestCcSwitchRelease {
             throw "未找到适用于 Windows 的安装包"
         }
 
+        $expectedHash = $null
+        $ymlAsset = $release.assets | Where-Object { $_.name -eq "latest.yml" -or $_.name -match "\.(sha512|sha256)$" } | Select-Object -First 1
+        if ($ymlAsset) {
+            try {
+                $ymlContent = Invoke-RestMethod -Uri $ymlAsset.browser_download_url -Headers $headers -TimeoutSec 30
+                if ($ymlContent -match 'sha512:\s*([a-zA-Z0-9+/=]+)') {
+                    $expectedHash = $matches[1]
+                } elseif ($ymlContent -match '([a-fA-F0-9]{64,128})') {
+                    $expectedHash = $matches[1]
+                }
+            } catch {
+                Write-UiWarning "⚠ 无法获取最新 release 的校验哈希" -Level Debug
+            }
+        }
+
         return @{
             Version = $release.tag_name -replace '^v', ''
             TagName = $release.tag_name
@@ -319,6 +334,7 @@ function Get-LatestCcSwitchRelease {
             DownloadUrl = $msiAsset.browser_download_url
             FileName = $msiAsset.name
             FileSize = $msiAsset.size
+            ExpectedHash = $expectedHash
         }
 
     } catch {
@@ -335,6 +351,8 @@ function Download-CcSwitchInstaller {
     下载地址
     .PARAMETER Version
     版本号
+    .PARAMETER ExpectedHash
+    预期的哈希值 (可选)
     .RETURNS
     下载的文件路径
     #>
@@ -343,7 +361,9 @@ function Download-CcSwitchInstaller {
         [string] $DownloadUrl,
 
         [Parameter(Mandatory = $true)]
-        [string] $Version
+        [string] $Version,
+
+        [string] $ExpectedHash
     )
 
     try {
@@ -366,6 +386,33 @@ function Download-CcSwitchInstaller {
 
         if (-not $downloadResult.Success) {
             throw $downloadResult.ErrorMessage
+        }
+
+        if ($ExpectedHash) {
+            Write-UiDim "  🔍 正在校验哈希..." -Level Detail
+            $fileHashObj = Get-FileHash -Path $filePath -Algorithm SHA512
+            $fileHashHex = $fileHashObj.Hash
+
+            $expectedHex = $ExpectedHash
+            if ($ExpectedHash -match '^[a-zA-Z0-9+/=]+$') {
+                try {
+                    $bytes = [System.Convert]::FromBase64String($ExpectedHash)
+                    $expectedHex = [System.BitConverter]::ToString($bytes) -replace '-'
+                } catch { }
+            }
+            if ($fileHashHex -ne $expectedHex -and $ExpectedHash -match '^[a-fA-F0-9]+$') {
+                 $fileHashObj256 = Get-FileHash -Path $filePath -Algorithm SHA256
+                 if ($fileHashObj256.Hash -ne $ExpectedHash -and $fileHashHex -ne $ExpectedHash) {
+                     Remove-Item $filePath -Force
+                     throw "安装包哈希校验失败！预计: $ExpectedHash"
+                 }
+            } elseif ($expectedHex -and $fileHashHex -ne $expectedHex) {
+                Remove-Item $filePath -Force
+                throw "安装包哈希校验失败！预计: $expectedHex, 实际: $fileHashHex"
+            }
+            Write-UiSuccess "  ✓ 下载及哈希校验完成" -Level Detail
+        } else {
+            Write-UiWarning "  ⚠ 未获取到哈希，跳过校验" -Level Detail
         }
 
         return $filePath

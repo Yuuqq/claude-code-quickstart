@@ -45,7 +45,7 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
     Write-Host "  解决方案：" -ForegroundColor Yellow
     Write-Host "    1. 先运行引导脚本:" -ForegroundColor White
     Write-Host "       Set-ExecutionPolicy Bypass -Scope Process -Force" -ForegroundColor Gray
-    Write-Host "       [Text.Encoding]::UTF8.GetString((New-Object Net.WebClient).DownloadData('https://github.com/MrNine-666/claude-code-quickstart/releases/latest/download/Bootstrap-ClaudeEnv.built.ps1')) | iex" -ForegroundColor Gray
+    Write-Host "       [Text.Encoding]::UTF8.GetString((New-Object Net.WebClient).DownloadData('https://github.com/Yuuqq/claude-code-quickstart/releases/latest/download/Bootstrap-ClaudeEnv.built.ps1')) | iex" -ForegroundColor Gray
     Write-Host "    2. 或在 Windows Terminal 中打开 PowerShell 7 后执行此脚本" -ForegroundColor White
     Write-Host ""
     exit 1
@@ -302,7 +302,7 @@ function Register-CcqShortcut {
         return
     }
 
-    $manageScriptUrl = "https://github.com/MrNine-666/claude-code-quickstart/releases/latest/download/Manage-ClaudeEnv.built.ps1"
+    $manageScriptUrl = "https://github.com/Yuuqq/claude-code-quickstart/releases/latest/download/Manage-ClaudeEnv.built.ps1"
 
     try {
         # 1) 当前会话立即可用
